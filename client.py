@@ -59,6 +59,11 @@ class State:
         self.updates = updates
         self.sounds = sounds
 
+        # the vector we use to offset all entities and make a camera effect
+        self.camera_offset = Vector2()
+
+        self.mouse_pos = pygame.mouse.get_pos()
+
 class Entity:
     def __init__(self, rect, sprite_path, owner=None, visible=True, entity_id=None, velocity=Vector2(0, 0),
                  scale_res=None):
@@ -353,7 +358,7 @@ class Agent(Entity):
 
         if pygame.mouse.get_pressed()[0] and keys[pygame.K_LSHIFT]:
 
-            mouse_pos = pygame.mouse.get_pos()
+            mouse_pos = state.mouse_pos
 
             block_pos = (round_down(mouse_pos[0]), round_down(mouse_pos[1]))
 
@@ -362,7 +367,6 @@ class Agent(Entity):
             new_block = Block(rect=Rect(block_pos[0], block_pos[1], 20, 20), sprite_path="assets/square.png", owner=self.owner, scale_res=(20,20))
 
             state.entities[new_block.entity_id] = new_block
-
 
     def fire_bullet(self, state):
 
@@ -381,7 +385,7 @@ class Agent(Entity):
             return
 
         # we want to fire the bullet towards the mouse
-        mouse_x, mouse_y = pygame.mouse.get_pos()
+        mouse_x, mouse_y = state.mouse_pos
 
         # calculate the vector between the player and the player mouse
         delta_x = mouse_x - self.rect.x
@@ -444,7 +448,7 @@ class Agent(Entity):
 
     def get_angle_towards_mouse(self, state):
 
-        mouse_x, mouse_y = pygame.mouse.get_pos()
+        mouse_x, mouse_y = state.mouse_pos
 
         dx = mouse_x - self.rect.x
         dy = mouse_y - self.rect.y
@@ -502,6 +506,9 @@ class Game:
 
         # is our client connected to a server
         self.connected = False
+
+        # the mouse position we recorded on the previous frame
+        self.last_mouse_pos = pygame.mouse.get_pos()
 
     def accept_clients(self):
 
@@ -672,7 +679,31 @@ class Game:
 
         self.receive_network_updates()
 
-        #print(self.state.sounds)
+        # we move the camera if the user is right clicking and dragging the mouse3
+        if pygame.mouse.get_pressed()[2]:
+
+            # the pixels that the mouse moved since the last frame
+            mouse_delta = (
+                pygame.mouse.get_pos()[0] - self.last_mouse_pos[0],
+                pygame.mouse.get_pos()[1] - self.last_mouse_pos[1]
+            )
+
+            self.state.camera_offset.x += mouse_delta[0]
+            self.state.camera_offset.y += mouse_delta[1]
+
+        # calculates what the mouse pos should be after we add the camera offset
+        mouse_pos = pygame.mouse.get_pos()
+
+        self.state.mouse_pos = (
+            mouse_pos[0] - self.state.camera_offset.x,
+            mouse_pos[1] - self.state.camera_offset.y
+        )
+
+        #print(self.state.camera_offset)
+
+        #print(self.state.mouse_pos)
+
+        self.last_mouse_pos = pygame.mouse.get_pos()
 
         for entity_id, entity in copy(self.state.entities).items():
 
@@ -686,7 +717,11 @@ class Game:
                     function(self.state)
 
             if entity.visible:
-                self.screen.blit(entity.sprite, entity.rect)
+
+                # calculate rect AFTER camera offset is applied
+                offset_rect = entity.rect.move(self.state.camera_offset)
+
+                self.screen.blit(entity.sprite, offset_rect)
 
         for sound in self.state.sounds:
             sound_object = mixer.Sound(sound)
