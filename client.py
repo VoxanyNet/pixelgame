@@ -205,7 +205,6 @@ class Bullet(Entity):
         self.update_funcs.append(self.apply_friction)
         self.update_funcs.append(self.despawn)
         self.update_funcs.extend((self.damage_agents,))
-        #self.update_funcs.append(self.report)
 
     @staticmethod
     def create_from_dict(entity_dict):
@@ -315,7 +314,11 @@ class Agent(Entity):
 
         self.entity_type = "agent"
 
+        # did the agent shoot in the last frame
         self.has_shot = False
+
+        # did the agent place a block in the last frame
+        self.has_placed = False
 
     @staticmethod
     def create_from_dict(entity_dict):
@@ -332,6 +335,8 @@ class Agent(Entity):
 
         new_entity = Agent(rect=rect, sprite_path=sprite_path, owner=owner, visible=visible, entity_id=entity_id,
                            velocity=velocity, scale_res=scale_res, health=health, acceleration=acceleration)
+
+        return new_entity
     def dump_to_dict(self):
         data_dict = super().dump_to_dict()
 
@@ -356,32 +361,48 @@ class Agent(Entity):
 
         keys = pygame.key.get_pressed()
 
-        if pygame.mouse.get_pressed()[0] and keys[pygame.K_LSHIFT]:
+        if pygame.mouse.get_pressed()[0] is False:
 
-            mouse_pos = state.mouse_pos
+            self.has_placed = False
+            return
 
-            block_pos = (round_down(mouse_pos[0]), round_down(mouse_pos[1]))
+        elif keys[pygame.K_LSHIFT] is False:
+            return
 
-            print(block_pos)
+        elif self.has_placed is True:
+            return
 
-            new_block = Block(rect=Rect(block_pos[0], block_pos[1], 20, 20), sprite_path="assets/square.png", owner=self.owner, scale_res=(20,20))
+        self.has_placed = True
 
-            state.entities[new_block.entity_id] = new_block
+        mouse_pos = state.mouse_pos
+
+        block_pos = (round_down(mouse_pos[0]), round_down(mouse_pos[1]))
+
+        new_block = Block(rect=Rect(block_pos[0], block_pos[1], 20, 20), sprite_path="assets/square.png", owner=self.owner, scale_res=(20,20))
+
+        state.entities[new_block.entity_id] = new_block
+
+        block_update = create_update("create", entity_type="block", data=new_block.dump_to_dict())
+
+        state.updates.append(block_update)
 
     def fire_bullet(self, state):
 
         # if the user has already shot and wants to shoot, we dont let them
-        if self.has_shot == True and pygame.mouse.get_pressed()[0] == True:
+        if self.has_shot is True and pygame.mouse.get_pressed()[0] is True:
             return
 
         # if the user has not already shot and does not want to shoot
-        elif self.has_shot == False and pygame.mouse.get_pressed()[0] == False:
+        elif self.has_shot is False and pygame.mouse.get_pressed()[0] is False:
             return
 
         # if the user does not want to shoot but shot last frame
-        elif self.has_shot == True and pygame.mouse.get_pressed()[0] == False:
+        elif self.has_shot is True and pygame.mouse.get_pressed()[0] is False:
             self.has_shot = False
 
+            return
+
+        elif pygame.key.get_pressed()[pygame.K_LCTRL] is False:
             return
 
         # we want to fire the bullet towards the mouse
@@ -497,7 +518,8 @@ class Game:
         self.entity_map = {
             "agent": Agent,
             "bullet": Bullet,
-            "entity": Entity
+            "entity": Entity,
+            "block": Block
         }
 
         # we store this as a dict like entity_id:object
@@ -629,6 +651,8 @@ class Game:
                     new_entity = entity_class.create_from_dict(
                         update["data"]
                     )
+
+                    print(type(new_entity))
 
                     #print(update["data"])
                     # add the new entity to the state
