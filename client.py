@@ -204,7 +204,7 @@ class Bullet(Entity):
 
         self.update_funcs.append(self.apply_friction)
         self.update_funcs.append(self.despawn)
-        self.update_funcs.extend((self.damage_agents,))
+        self.update_funcs.extend((self.damage_agents, self.break_blocks))
 
     @staticmethod
     def create_from_dict(entity_dict):
@@ -225,6 +225,7 @@ class Bullet(Entity):
 
         return new_entity
 
+    
     def dump_to_dict(self):
 
         data_dict = super().dump_to_dict()
@@ -253,6 +254,20 @@ class Bullet(Entity):
 
         if abs(self.velocity.x) + abs(self.velocity.y) < 0.001:
             self.velocity = Vector2(0, 0)
+
+    def break_blocks(self, state):
+
+        entities = self.detect_collisions(state.entities)
+
+        for entity in entities:
+            if type(entity) is not Block:
+                return
+
+            entity.delete = True
+
+            delete_block_update = create_update("delete", entity_id=entity.entity_id)
+
+            state.updates.append(delete_block_update)
 
     def damage_agents(self, state):
 
@@ -308,7 +323,7 @@ class Agent(Entity):
 
         self.last_fire = 0
 
-        self.update_funcs.extend((self.fire_bullet, self.accelerate, self.apply_friction, self.place_block))
+        self.update_funcs.extend((self.fire_bullet, self.accelerate, self.apply_friction, self.place_block, self.break_block))
 
         self.health = health
 
@@ -319,6 +334,9 @@ class Agent(Entity):
 
         # did the agent place a block in the last frame
         self.has_placed = False
+
+        # did the agent break a block in the last frame
+        self.has_broken = False
 
     @staticmethod
     def create_from_dict(entity_dict):
@@ -356,6 +374,38 @@ class Agent(Entity):
 
                 case "health":
                     self.health = update_data["health"]
+
+    def break_block(self, state):
+
+        if pygame.mouse.get_pressed()[0] is False:
+
+            self.has_broken = False
+
+            return
+
+        elif self.has_broken:
+            return
+
+        # do not place if we are trying to break
+        elif pygame.key.get_pressed()[pygame.K_LSHIFT]:
+            return
+
+        #print("trying to break!")
+
+        # check through all the blocks to see if there is one where the mouse clicked
+        for entity in state.entities.values():
+
+            if type(entity) is not Block:
+                continue
+
+            if entity.rect.collidepoint(state.mouse_pos):
+                # if we find a block that collides, we delete the block
+                entity.delete = True
+
+                # send an update to delete the block
+                block_delete = create_update("delete", entity_id=entity.entity_id)
+
+                self.has_broken = True
 
     def place_block(self, state):
 
