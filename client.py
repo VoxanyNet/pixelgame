@@ -7,16 +7,16 @@ import time
 import uuid
 from copy import copy, deepcopy
 import threading
+from collections import defaultdict
 
-from frozendict import frozendict
-import numpy
 import pygame
 from pygame import mixer
 from pygame import Rect
 from pygame.math import Vector2
 
 import headered_socket
-from helpers import get_matching_objects
+
+RESOLUTION = [1280,720]
 
 def round_down(n):
     return int(math.floor(n / 20.0)) * 20
@@ -65,6 +65,13 @@ class State:
         self.mouse_pos = pygame.mouse.get_pos()
 
         self.screen = None
+
+        # these layers will be draw in sequence
+        self.layers = defaultdict(
+            pygame.Surface(
+                RESOLUTION
+            )
+        )
 
 class Entity:
     def __init__(self, rect, sprite_path, owner=None, visible=True, entity_id=None, velocity=Vector2(0, 0),
@@ -434,17 +441,23 @@ class Agent(Entity):
             if type(entity) is not Block:
                 continue
 
+            if entity.rect.collidepoint(state.mouse_pos) is False:
+                continue
+
             path_to_block = Vector2(
-                entity.rect.x - self.rect.x,
-                entity.rect.y - self.rect.y
+                entity.rect.center[0] - self.rect.center[0],
+                entity.rect.center[1] - self.rect.center[1]
             )
 
-            pygame.draw.line(
-                state.screen, (0,0,0), path_to_block
+            # the agent cannot break the block if it is over 100 pixels away
+            if path_to_block.magnitude() > 100:
+                return
+
+            pygame.draw.aaline(
+                state.screen, (0,0,0), (self.rect.center[0], self.rect.center[1]), (entity.rect.center[0], entity.rect.center[1])
             )
 
-            if entity.rect.collidepoint(state.mouse_pos):
-               entity.health -= 5
+            entity.health -= 5
 
 
     def place_block(self, state):
@@ -601,7 +614,7 @@ class Game:
         self.state = State()
 
         # our screen surface
-        self.state.screen = pygame.display.set_mode([1280, 720])
+        self.state.screen = pygame.display.set_mode([RESOLUTION])
 
         self.clock = pygame.time.Clock()
 
@@ -838,7 +851,7 @@ class Game:
                     # highlight the entity if its a block
                     if entity.rect.collidepoint(self.state.mouse_pos):
 
-                        print("Drawing!")
+                        #print("Drawing!")
 
                         pygame.draw.rect(
                             self.state.screen, (0, 0, 0), entity.rect.move(self.state.camera_offset), width=4
