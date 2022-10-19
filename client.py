@@ -64,6 +64,8 @@ class State:
 
         self.mouse_pos = pygame.mouse.get_pos()
 
+        self.screen = None
+
 class Entity:
     def __init__(self, rect, sprite_path, owner=None, visible=True, entity_id=None, velocity=Vector2(0, 0),
                  scale_res=None):
@@ -78,6 +80,8 @@ class Entity:
         self.sprite_path = sprite_path
 
         self.sprite = pygame.image.load(sprite_path)
+
+        print(type(self.sprite))
 
         self.visible = visible
 
@@ -188,7 +192,39 @@ class Entity:
         #print(self.velocity)
 
 class Block(Entity):
-    pass
+    def __init__(self, rect, sprite_path, health=100, owner=None, visible=True, entity_id=None, velocity=Vector2(0, 0),
+                 scale_res=None):
+
+        super().__init__(rect=rect, sprite_path=sprite_path, velocity=velocity, scale_res=scale_res, owner=owner,
+                         visible=visible, entity_id=entity_id)
+
+        # if this reaches zero then the block will break
+        self.health = health
+
+        self.update_funcs.extend((self.check_health,))
+
+    def check_health(self, state):
+        # adjust the scale res depending on health
+        # also destroy the block if the health goes below zero
+
+        #print(self.health)
+        if self.health < 0:
+            self.delete = True
+
+            block_delete = create_update("delete", entity_id=self.entity_id)
+
+            state.updates.append(block_delete)
+
+            return
+
+        # change the scale res based on the health of the block
+        adjusted_scale_res = (self.scale_res[0] * (self.health/100), self.scale_res[1] *  (self.health/100))
+
+        self.sprite = pygame.transform.scale(self.sprite, adjusted_scale_res)
+
+        scale_res_update = create_update("update", entity_id=self.entity_id, data={"scale_res": [adjusted_scale_res]})
+
+        state.updates.append(scale_res_update)
 
 class Bullet(Entity):
     def __init__(self, rect, sprite_path, shooter, owner=None, damage=0.1, visible=True, entity_id=None,
@@ -265,9 +301,9 @@ class Bullet(Entity):
 
             entity.delete = True
 
-            delete_block_update = create_update("delete", entity_id=entity.entity_id)
+            delete_update = create_update("delete", entity_id=entity.entity_id)
 
-            state.updates.append(delete_block_update)
+            state.updates.append(delete_update)
 
     def damage_agents(self, state):
 
@@ -398,14 +434,18 @@ class Agent(Entity):
             if type(entity) is not Block:
                 continue
 
+            path_to_block = Vector2(
+                entity.rect.x - self.rect.x,
+                entity.rect.y - self.rect.y
+            )
+
+            pygame.draw.line(
+                state.screen, (0,0,0), path_to_block
+            )
+
             if entity.rect.collidepoint(state.mouse_pos):
-                # if we find a block that collides, we delete the block
-                entity.delete = True
+               entity.health -= 5
 
-                # send an update to delete the block
-                block_delete = create_update("delete", entity_id=entity.entity_id)
-
-                self.has_broken = True
 
     def place_block(self, state):
 
@@ -435,7 +475,6 @@ class Agent(Entity):
         block_update = create_update("create", entity_type="block", data=new_block.dump_to_dict())
 
         state.updates.append(block_update)
-
     def fire_bullet(self, state):
 
         # if the user has already shot and wants to shoot, we dont let them
@@ -559,8 +598,10 @@ class Game:
         # our client ID
         self.uuid = str(uuid.uuid4())
 
+        self.state = State()
+
         # our screen surface
-        self.screen = pygame.display.set_mode([1280, 720])
+        self.state.screen = pygame.display.set_mode([1280, 720])
 
         self.clock = pygame.time.Clock()
 
@@ -571,10 +612,6 @@ class Game:
             "entity": Entity,
             "block": Block
         }
-
-        # we store this as a dict like entity_id:object
-        # this makes it faster to lookup entities by their id
-        self.state = State()
 
         # is our client connected to a server
         self.connected = False
@@ -743,7 +780,7 @@ class Game:
 
     def update(self):
 
-        self.screen.fill((0, 0, 0))
+        self.state.screen.fill((100, 100, 100))
 
         # updates that will be sent this frame
         self.state.updates = []
@@ -795,7 +832,17 @@ class Game:
                 # calculate rect AFTER camera offset is applied
                 offset_rect = entity.rect.move(self.state.camera_offset)
 
-                self.screen.blit(entity.sprite, offset_rect)
+                self.state.screen.blit(entity.sprite, offset_rect)
+
+                if type(entity) is Block:
+                    # highlight the entity if its a block
+                    if entity.rect.collidepoint(self.state.mouse_pos):
+
+                        print("Drawing!")
+
+                        pygame.draw.rect(
+                            self.state.screen, (0, 0, 0), entity.rect.move(self.state.camera_offset), width=4
+                        )
 
         for sound in self.state.sounds:
             sound_object = mixer.Sound(sound)
