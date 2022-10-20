@@ -16,10 +16,12 @@ from pygame.math import Vector2
 
 import headered_socket
 
-RESOLUTION = [1280,720]
+RESOLUTION = (1280, 720)
+
 
 def round_down(n):
     return int(math.floor(n / 20.0)) * 20
+
 
 def create_update(update_type, entity_type=None, entity_id=None, data=None, json_bytes=False):
     # conditions that must be true if we are making a create update
@@ -53,6 +55,7 @@ def create_update(update_type, entity_type=None, entity_id=None, data=None, json
 
     return update
 
+
 class State:
     def __init__(self, entities={}, updates=[], sounds=[]):
         self.entities = entities
@@ -67,15 +70,13 @@ class State:
         self.screen = None
 
         # these layers will be draw in sequence
-        self.layers = defaultdict(
-            pygame.Surface(
-                RESOLUTION
-            )
-        )
+        self.layers = defaultdict(lambda: pygame.Surface(RESOLUTION, flags=pygame.SRCALPHA))
 
 class Entity:
-    def __init__(self, rect, sprite_path, owner=None, visible=True, entity_id=None, velocity=Vector2(0, 0),
+    def __init__(self, rect, sprite_path, layer, owner=None, visible=True, entity_id=None, velocity=Vector2(0, 0),
                  scale_res=None):
+
+        self.layer = layer
 
         # the one that updates this every frame
         self.owner = owner
@@ -176,13 +177,19 @@ class Entity:
 
         return collisions
 
+    def draw(self, state):
+
+        offset_rect = self.rect.move(state.camera_offset)
+        # draw the entity's sprite onto its layer
+        state.layers[self.layer].blit(self.sprite, offset_rect)
+
     def move(self, state):
         # move the entities rect
 
-        #print(self.velocity)
+        # print(self.velocity)
 
         # we dont need to move the entity if they have no velocity
-        if self.velocity == Vector2(0,0):
+        if self.velocity == Vector2(0, 0):
             return
 
         self.rect.move_ip(self.velocity)
@@ -196,13 +203,13 @@ class Entity:
             create_update(update_type="update", entity_id=self.entity_id, data=update_data)
         )
 
-        #print(self.velocity)
+        # print(self.velocity)
+
 
 class Block(Entity):
-    def __init__(self, rect, sprite_path, health=100, owner=None, visible=True, entity_id=None, velocity=Vector2(0, 0),
+    def __init__(self, rect, sprite_path, layer=0, health=100, owner=None, visible=True, entity_id=None, velocity=Vector2(0, 0),
                  scale_res=None):
-
-        super().__init__(rect=rect, sprite_path=sprite_path, velocity=velocity, scale_res=scale_res, owner=owner,
+        super().__init__(rect=rect, layer=layer, sprite_path=sprite_path, velocity=velocity, scale_res=scale_res, owner=owner,
                          visible=visible, entity_id=entity_id)
 
         # if this reaches zero then the block will break
@@ -214,7 +221,7 @@ class Block(Entity):
         # adjust the scale res depending on health
         # also destroy the block if the health goes below zero
 
-        #print(self.health)
+        # print(self.health)
         if self.health < 0:
             self.delete = True
 
@@ -225,7 +232,7 @@ class Block(Entity):
             return
 
         # change the scale res based on the health of the block
-        adjusted_scale_res = (self.scale_res[0] * (self.health/100), self.scale_res[1] *  (self.health/100))
+        adjusted_scale_res = (self.scale_res[0] * (self.health / 100), self.scale_res[1] * (self.health / 100))
 
         self.sprite = pygame.transform.scale(self.sprite, adjusted_scale_res)
 
@@ -233,10 +240,12 @@ class Block(Entity):
 
         state.updates.append(scale_res_update)
 
+
 class Bullet(Entity):
-    def __init__(self, rect, sprite_path, shooter, owner=None, damage=0.1, visible=True, entity_id=None,
+    def __init__(self, rect, sprite_path, shooter, layer = 0, owner=None, damage=0.1, visible=True, entity_id=None,
                  velocity=Vector2(0, 0), scale_res=None):
-        super().__init__(rect=rect, sprite_path=sprite_path, velocity=velocity, scale_res=scale_res, owner=owner,
+        super().__init__(rect=rect, layer=layer, sprite_path=sprite_path, velocity=velocity, scale_res=scale_res,
+                         owner=owner,
                          visible=visible, entity_id=entity_id)
 
         self.hit_sound = "assets/sounds/hit.mp3"
@@ -268,7 +277,6 @@ class Bullet(Entity):
 
         return new_entity
 
-    
     def dump_to_dict(self):
 
         data_dict = super().dump_to_dict()
@@ -292,7 +300,7 @@ class Bullet(Entity):
 
     def apply_friction(self, state):
 
-        #print(self.velocity)a
+        # print(self.velocity)a
         self.velocity += -0.1 * self.velocity
 
         if abs(self.velocity.x) + abs(self.velocity.y) < 0.001:
@@ -316,7 +324,7 @@ class Bullet(Entity):
 
         collisions = self.detect_collisions(state.entities)
 
-        #print(collisions)
+        # print(collisions)
 
         for entity in collisions:
             if type(entity) != Agent:
@@ -348,25 +356,29 @@ class Bullet(Entity):
 
 
 class Zombie(Entity):
-    def __init__(self, rect, sprite_path, owner=None, visible=True, entity_id=None, velocity=Vector2(0, 0),
+    def __init__(self, rect, sprite_path, layer=0, owner=None, visible=True, entity_id=None, velocity=Vector2(0, 0),
                  scale_res=None):
-
-        super().__init__(rect=rect, sprite_path=sprite_path, velocity=velocity, scale_res=scale_res, owner=owner,
+        super().__init__(rect=rect, layer=layer, sprite_path=sprite_path, velocity=velocity, scale_res=scale_res,
+                         owner=owner,
                          visible=visible, entity_id=entity_id)
 
+
 class Agent(Entity):
-    def __init__(self, rect, sprite_path, health=100, owner=None, visible=True, entity_id=None, acceleration=2, velocity=Vector2(0, 0), scale_res=None):
+    def __init__(self, rect, sprite_path, layer=0, health=100, owner=None, visible=True, entity_id=None, acceleration=2,
+                 velocity=Vector2(0, 0), scale_res=None):
 
         # print(type(velocity))
 
-        super().__init__(rect=rect, sprite_path=sprite_path, entity_id=entity_id, visible=visible, owner=owner,
-                         velocity=velocity, scale_res=scale_res)
+        super().__init__(rect=rect, layer=layer, sprite_path=sprite_path, velocity=velocity, scale_res=scale_res,
+                         owner=owner,
+                         visible=visible, entity_id=entity_id)
 
         self.acceleration = acceleration
 
         self.last_fire = 0
 
-        self.update_funcs.extend((self.fire_bullet, self.accelerate, self.apply_friction, self.place_block, self.break_block))
+        self.update_funcs.extend(
+            (self.fire_bullet, self.accelerate, self.apply_friction, self.place_block, self.break_block))
 
         self.health = health
 
@@ -398,6 +410,7 @@ class Agent(Entity):
                            velocity=velocity, scale_res=scale_res, health=health, acceleration=acceleration)
 
         return new_entity
+
     def dump_to_dict(self):
         data_dict = super().dump_to_dict()
 
@@ -433,7 +446,7 @@ class Agent(Entity):
         elif pygame.key.get_pressed()[pygame.K_LSHIFT]:
             return
 
-        #print("trying to break!")
+        # print("trying to break!")
 
         # check through all the blocks to see if there is one where the mouse clicked
         for entity in state.entities.values():
@@ -454,11 +467,11 @@ class Agent(Entity):
                 return
 
             pygame.draw.aaline(
-                state.screen, (0,0,0), (self.rect.center[0], self.rect.center[1]), (entity.rect.center[0], entity.rect.center[1])
+                state.screen, (0, 0, 0), (self.rect.center[0], self.rect.center[1]),
+                (entity.rect.center[0], entity.rect.center[1])
             )
 
             entity.health -= 5
-
 
     def place_block(self, state):
 
@@ -481,13 +494,15 @@ class Agent(Entity):
 
         block_pos = (round_down(mouse_pos[0]), round_down(mouse_pos[1]))
 
-        new_block = Block(rect=Rect(block_pos[0], block_pos[1], 20, 20), sprite_path="assets/square.png", owner=self.owner, scale_res=(20,20))
+        new_block = Block(rect=Rect(block_pos[0], block_pos[1], 20, 20), layer=1, sprite_path="assets/square.png",
+                          owner=self.owner, scale_res=(20, 20))
 
         state.entities[new_block.entity_id] = new_block
 
         block_update = create_update("create", entity_type="block", data=new_block.dump_to_dict())
 
         state.updates.append(block_update)
+
     def fire_bullet(self, state):
 
         # if the user has already shot and wants to shoot, we dont let them
@@ -543,7 +558,7 @@ class Agent(Entity):
         #                     velocity=self.velocity + bullet_direction_vector, sprite_path="assets/bullet.png",
         #                     scale_res=(15, 15), owner=self.owner)
 
-        #print(bullet.velocity)
+        # print(bullet.velocity)
 
         state.entities[bullet.entity_id] = bullet
 
@@ -567,7 +582,7 @@ class Agent(Entity):
         if keys[pygame.K_d]:
             self.velocity.x += self.acceleration
 
-        #(self.health)
+        # (self.health)
 
     def get_angle_towards_mouse(self, state):
 
@@ -614,7 +629,7 @@ class Game:
         self.state = State()
 
         # our screen surface
-        self.state.screen = pygame.display.set_mode([RESOLUTION])
+        self.state.screen = pygame.display.set_mode(RESOLUTION)
 
         self.clock = pygame.time.Clock()
 
@@ -676,7 +691,7 @@ class Game:
                     # see if we have an update from the client
                     updates = updating_client.recv_headered()
 
-                    #print(updates.decode("utf-8"))
+                    # print(updates.decode("utf-8"))
 
                 except BlockingIOError:
                     continue  # continue to the next client if we didnt receive an update
@@ -692,7 +707,7 @@ class Game:
 
     def send_update(self, update):
 
-        if update != []: # if they did not provide a list of updates, we put it in a list for them
+        if update != []:  # if they did not provide a list of updates, we put it in a list for them
             update = [update]
 
         update_json = json.dumps(update)
@@ -733,7 +748,7 @@ class Game:
 
         server_updates = json.loads(server_updates_json)
 
-        #print(server_updates)
+        # print(server_updates)
 
         for update in server_updates:
 
@@ -741,7 +756,7 @@ class Game:
 
                 case "create":
 
-                    #print("Create!")
+                    # print("Create!")
 
                     # get entity that is to be created
                     entity_class = self.entity_map[
@@ -754,20 +769,20 @@ class Game:
 
                     print(type(new_entity))
 
-                    #print(update["data"])
+                    # print(update["data"])
                     # add the new entity to the state
                     self.state.entities[new_entity.entity_id] = new_entity
 
                 case "update":
 
-                    #print("Update!")
+                    # print("Update!")
 
                     # find the entity in the state and update it with the provided data
                     self.state.entities[update["entity_id"]].load_update(update["data"])
 
                 case "delete":
 
-                    #print("Delete!")
+                    # print("Delete!")
 
                     del self.state.entities[update["entity_id"]]
 
@@ -782,12 +797,12 @@ class Game:
     def start(self):
         # creates all the initial entities we need to play
 
-        local_agent = Agent(rect=Rect(100, 100, 50, 50), sprite_path="assets/square.png", acceleration=1,
+        local_agent = Agent(rect=Rect(100, 100, 50, 50), layer = 0, sprite_path="assets/square.png", acceleration=1,
                             owner=self.uuid, scale_res=(50, 50))
 
         self.state.entities[local_agent.entity_id] = local_agent
 
-        update = create_update("create", entity_type="agent", data = local_agent.dump_to_dict())
+        update = create_update("create", entity_type="agent", data=local_agent.dump_to_dict())
 
         self.send_update(update)
 
@@ -805,7 +820,6 @@ class Game:
 
         # we move the camera if the user is right clicking and dragging the mouse3
         if pygame.mouse.get_pressed()[2]:
-
             # the pixels that the mouse moved since the last frame
             mouse_delta = (
                 pygame.mouse.get_pos()[0] - self.last_mouse_pos[0],
@@ -823,9 +837,9 @@ class Game:
             mouse_pos[1] - self.state.camera_offset.y
         )
 
-        #print(self.state.camera_offset)
+        # print(self.state.camera_offset)
 
-        #print(self.state.mouse_pos)
+        # print(self.state.mouse_pos)
 
         self.last_mouse_pos = pygame.mouse.get_pos()
 
@@ -840,22 +854,23 @@ class Game:
                 for function in entity.update_funcs:
                     function(self.state)
 
-            if entity.visible:
+            # have the entity draw its sprite onto its layer
+            entity.draw(self.state)
 
-                # calculate rect AFTER camera offset is applied
-                offset_rect = entity.rect.move(self.state.camera_offset)
+            # actually draw all the layers onto the screen
+            for layer in self.state.layers.values():
+                self.state.screen.blit(layer, (0, 0))
 
-                self.state.screen.blit(entity.sprite, offset_rect)
+                layer.fill((0, 0, 0))
 
-                if type(entity) is Block:
-                    # highlight the entity if its a block
-                    if entity.rect.collidepoint(self.state.mouse_pos):
-
-                        #print("Drawing!")
-
-                        pygame.draw.rect(
-                            self.state.screen, (0, 0, 0), entity.rect.move(self.state.camera_offset), width=4
-                        )
+            # if type(entity) is Block:
+            #     # highlight the entity if its a block
+            #     if entity.rect.collidepoint(self.state.mouse_pos):
+            #         # print("Drawing!")
+            #
+            #         pygame.draw.rect(
+            #             self.state.screen, (0, 0, 0), entity.rect.move(self.state.camera_offset), width=4
+            #         )
 
         for sound in self.state.sounds:
             sound_object = mixer.Sound(sound)
@@ -939,7 +954,6 @@ class Game:
 
                 updates.append(update)
 
-
         # DELETE
         for entity_id, entity in before_dict.items():
 
@@ -974,15 +988,16 @@ class Game:
                     pygame.quit()
                     sys.exit()
 
-            #before_dict = frozendict(self.local_state)
+            # before_dict = frozendict(self.local_state)
             self.update()
-            #after_dict = self.local_state
+            # after_dict = self.local_state
 
-            #updates = self.detect_changes(before_dict, after_dict)
+            # updates = self.detect_changes(before_dict, after_dict)
 
             # print(updates)
 
             self.clock.tick(60)
+
 
 response = input("Host game? (y/N): ")
 
@@ -1002,7 +1017,6 @@ match response.lower():
             ip = socket.gethostname()
 
         print("Connecting to remote server")
-
 
 game = Game(is_server=is_server)
 
